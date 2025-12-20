@@ -44,7 +44,7 @@ Submit the JAR to the Flink cluster:
 docker cp target/uber-flink-engine-1.0-SNAPSHOT.jar flink-jobmanager-new:/tmp/job.jar
 
 # Submit Job
-docker exec flink-jobmanager-new flink run -d -c com.interview.UberStreamJob /tmp/job.jar
+docker exec flink-jobmanager-new flink run -d -c com.myuber.UberStreamJob /tmp/job.jar
 ```
 
 ### 4. Start the Data Simulator
