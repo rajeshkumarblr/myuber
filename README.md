@@ -83,3 +83,19 @@ python driver_simulator.py
 ├── prometheus.yml                        # Metrics Configuration
 └── schema.sql                            # Database Schema (if applicable)
 ```
+
+## 💥 Chaos Engineering (Fault Tolerance)
+
+To test Flink's recovery mechanism, you can kill the TaskManager container while the job is running:
+
+```bash
+# Kill the TaskManager
+docker kill flink-taskmanager-new
+
+# Watch the Flink Dashboard (Job will go to RESTARTING state)
+# Flink will request a new resource (container) or wait for it to restart.
+
+# Restart the container to recover
+docker start flink-taskmanager-new
+```
+The job should resume from the last checkpoint with zero data loss.
