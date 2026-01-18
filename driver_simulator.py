@@ -4,9 +4,11 @@ import random
 from kafka import KafkaProducer
 
 # CONFIG
-KAFKA_TOPIC = 'driver-locations'
+KAFKA_TOPIC_DRIVERS = 'driver-locations'
+KAFKA_TOPIC_REQUESTS = 'ride-requests'
 BOOTSTRAP_SERVERS = 'localhost:9092'
 NUM_DRIVERS = 1000
+NUM_REQUESTS_PER_SEC = 500 # Simulate demand
 
 # SAN FRANCISCO BOUNDS
 LAT_MIN, LAT_MAX = 37.70, 37.81
@@ -30,9 +32,10 @@ def generate_drivers():
 def run_simulation():
     producer = create_producer()
     drivers = generate_drivers()
-    print(f"🚀 Starting simulation for {NUM_DRIVERS} drivers...")
+    print(f"🚀 Starting simulation for {NUM_DRIVERS} drivers and demand...")
 
     while True:
+        # 1. Update and Send Driver Locations
         for driver in drivers:
             # Move driver slightly (simulate driving)
             driver['lat'] += random.uniform(-0.001, 0.001)
@@ -40,12 +43,32 @@ def run_simulation():
             driver['timestamp'] = int(time.time() * 1000)
             
             # Send to Kafka
-            producer.send(KAFKA_TOPIC, value=driver)
+            producer.send(KAFKA_TOPIC_DRIVERS, value=driver)
         
+        # 2. Generate and Send Ride Requests (Demand)
+        # Create a "Hot Area" around downtown (approx 37.7749, -122.4194)
+        for _ in range(NUM_REQUESTS_PER_SEC):
+            is_hot_area = random.random() < 0.3 # 30% chane to be in hot area
+            
+            if is_hot_area:
+                 lat = random.uniform(37.77, 37.78)
+                 lon = random.uniform(-122.42, -122.41)
+            else:
+                 lat = random.uniform(LAT_MIN, LAT_MAX)
+                 lon = random.uniform(LON_MIN, LON_MAX)
+
+            request = {
+                'request_id': random.randint(100000, 999999),
+                'lat': lat,
+                'lon': lon,
+                'timestamp': int(time.time() * 1000)
+            }
+            producer.send(KAFKA_TOPIC_REQUESTS, value=request)
+
         # Flush batch to network
         producer.flush()
-        print(f"📡 Pushed {NUM_DRIVERS} location updates...")
-        time.sleep(1) # 1 second interval (1000 TPS)
+        print(f"📡 Pushed {NUM_DRIVERS} driver updates and {NUM_REQUESTS_PER_SEC} ride requests...")
+        time.sleep(1) # 1 second interval
 
 if __name__ == "__main__":
     run_simulation()

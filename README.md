@@ -6,12 +6,13 @@ A high-throughput real-time streaming application built with **Apache Flink** an
 
 The pipeline consists of the following components:
 
-1.  **Data Generator (Python)**: Simulates thousands of drivers moving across San Francisco, emitting location events to Kafka.
-2.  **Message Broker (Kafka)**: Buffers raw events in the `driver-locations` topic.
+1.  **Data Generator (Python)**: Simulates thousands of drivers moving across San Francisco, emitting location events to Kafka. Also generates request traffic with "hot areas" to simulate demand.
+2.  **Message Broker (Kafka)**: Buffers raw events in the `driver-locations` and `ride-requests` topics.
 3.  **Stream Processing (Flink)**:
-    *   Consumes JSON events from Kafka.
-    *   Deserializes and parses data.
-    *   Filters/Maps events (e.g., identifying available drivers).
+    *   Consumes JSON events from Kafka (Unified Stream).
+    *   Groups events by Geo-Grid.
+    *   Calculates Demand vs Supply in 10-second windows.
+    *   Detects and alerts on Surge Pricing conditions.
 4.  **Observability**:
     *   **Prometheus**: Scrapes metrics from Flink TaskManagers.
     *   **Grafana**: Visualizes throughput, latency, and job health.
@@ -29,6 +30,7 @@ Spin up Kafka, Zookeeper, Flink, Prometheus, and Grafana:
 ```bash
 docker-compose up -d
 ```
+*Note: Prometheus is mapped to port **9091** to avoid conflicts.*
 
 ### 2. Build the Flink Job
 Compile the Java application into a JAR file:
@@ -37,18 +39,8 @@ mvn clean package
 ```
 *Output: `target/uber-flink-engine-1.0-SNAPSHOT.jar`*
 
-### 3. Submit the Job
-Submit the JAR to the Flink cluster:
-```bash
-# Copy JAR to JobManager container
-docker cp target/uber-flink-engine-1.0-SNAPSHOT.jar flink-jobmanager-new:/tmp/job.jar
-
-# Submit Job
-docker exec flink-jobmanager-new flink run -d -c com.myuber.UberStreamJob /tmp/job.jar
-```
-
-### 4. Start the Data Simulator
-Generate real-time traffic:
+### 3. Start the Data Simulator
+Generate real-time traffic (Drivers + Requests):
 ```bash
 # Create venv and install dependencies
 python3 -m venv .venv
@@ -58,6 +50,21 @@ pip install kafka-python
 # Run simulator
 python driver_simulator.py
 ```
+*Wait for output indicating events are being pushed.*
+
+### 4. Run the Flink Job (Locally)
+For local development, run the job directly in your terminal. 
+
+**Note for Java 17 users**: High-availability flags are required.
+
+```bash
+java --add-opens=java.base/java.lang=ALL-UNNAMED \
+     --add-opens=java.base/java.util=ALL-UNNAMED \
+     --add-opens=java.base/java.util.concurrent=ALL-UNNAMED \
+     -cp target/uber-flink-engine-1.0-SNAPSHOT.jar \
+     com.myuber.UberStreamJob
+```
+*Check the console for `🔥 SURGE DETECTED` logs.*
 
 ## 📊 Dashboards & Observability
 
@@ -65,10 +72,10 @@ python driver_simulator.py
 |---------|-----|-------------|
 | **Flink Dashboard** | [http://localhost:8081](http://localhost:8081) | Job management, backpressure monitoring, logs. |
 | **Grafana** | [http://localhost:3000](http://localhost:3000) | Visual metrics. (User/Pass: `admin`/`admin`) |
-| **Prometheus** | [http://localhost:9090](http://localhost:9090) | Raw metrics query engine. |
+| **Prometheus** | [http://localhost:9091](http://localhost:9091) | Raw metrics query engine. |
 
 ## 🛠 Tech Stack
-*   **Language**: Java 11 (Flink), Python (Simulator)
+*   **Language**: Java 17 (Flink), Python (Simulator)
 *   **Streaming**: Apache Flink 1.17
 *   **Messaging**: Apache Kafka 7.4
 *   **Monitoring**: Prometheus, Grafana
@@ -83,19 +90,3 @@ python driver_simulator.py
 ├── prometheus.yml                        # Metrics Configuration
 └── schema.sql                            # Database Schema (if applicable)
 ```
-
-## 💥 Chaos Engineering (Fault Tolerance)
-
-To test Flink's recovery mechanism, you can kill the TaskManager container while the job is running:
-
-```bash
-# Kill the TaskManager
-docker kill flink-taskmanager-new
-
-# Watch the Flink Dashboard (Job will go to RESTARTING state)
-# Flink will request a new resource (container) or wait for it to restart.
-
-# Restart the container to recover
-docker start flink-taskmanager-new
-```
-The job should resume from the last checkpoint with zero data loss.
